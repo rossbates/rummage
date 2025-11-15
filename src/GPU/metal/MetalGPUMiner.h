@@ -1,5 +1,5 @@
 /*
- * Rummage - Metal GPU Miner Implementation (Placeholder for Phase 2)
+ * Rummage - Metal GPU Miner Implementation
  *
  * Copyright (c) 2025 rossbates
  *
@@ -28,11 +28,30 @@
 #include "../IGPUMiner.h"
 #include <stdint.h>
 
+// Forward declarations for Objective-C types (to keep header C++ compatible)
+#ifdef __OBJC__
+@class MTLDevice;
+@class MTLCommandQueue;
+@class MTLLibrary;
+@class MTLComputePipelineState;
+@class MTLBuffer;
+#else
+typedef void MTLDevice;
+typedef void MTLCommandQueue;
+typedef void MTLLibrary;
+typedef void MTLComputePipelineState;
+typedef void MTLBuffer;
+#endif
+
+// Metal-specific parameters
+#define METAL_THREADGROUP_SIZE 256      // Threads per threadgroup (similar to CUDA block)
+#define METAL_THREADGROUPS_PER_GRID 512 // Number of threadgroups (similar to CUDA grid)
+#define METAL_KEYS_PER_THREAD 64        // Keys generated per thread per iteration
+
+#define METAL_TOTAL_THREADS (METAL_THREADGROUP_SIZE * METAL_THREADGROUPS_PER_GRID)
+
 /**
  * Metal GPU Miner Implementation
- *
- * This is a placeholder implementation for Phase 1.
- * Full implementation will be completed in Phase 2-5.
  */
 class MetalGPUMiner : public IGPUMiner
 {
@@ -63,11 +82,50 @@ public:
     virtual void setBech32Verification(const char *originalPattern, VanityMode originalMode) override;
 
 private:
-    // Metal-specific members will be added in Phase 2
+    // Metal device and command infrastructure
+    MTLDevice *device;
+    MTLCommandQueue *commandQueue;
+    MTLLibrary *library;
+    MTLComputePipelineState *randomPipeline;
+    MTLComputePipelineState *sequentialPipeline;
+
+    // Metal buffers
+    MTLBuffer *gTableXBuffer;
+    MTLBuffer *gTableYBuffer;
+    MTLBuffer *vanityPatternBuffer;
+    MTLBuffer *startOffsetBuffer;
+    MTLBuffer *resultsBuffer;
+    MTLBuffer *privKeysBuffer;
+    MTLBuffer *pubKeysBuffer;
+
+    // CPU-side result buffers
+    uint8_t *outputFoundCPU;
+    uint8_t *outputPrivKeysCPU;
+    uint8_t *outputPubKeysCPU;
+
+    // Configuration
+    uint8_t vanityLen;
+    VanityMode vanityMode;
+    SearchMode searchMode;
+    uint8_t startOffset[32];
+
+    // Statistics
     uint64_t keysGenerated;
     uint64_t matchesFound;
     uint64_t currentIteration;
     uint64_t totalIterations;
+    uint64_t searchSpaceSize;
+
+    // Bech32 verification
+    bool needsBech32Verification;
+    char originalBech32Pattern[MAX_VANITY_BECH32_LEN + 1];
+    VanityMode originalBech32Mode;
+
+    // Private helper methods
+    bool initializeMetal();
+    bool loadMetalLibrary();
+    bool createPipelines();
+    bool allocateBuffers(const uint8_t *gTableXCPU, const uint8_t *gTableYCPU);
 };
 
 #endif // METALGPUMINER_H

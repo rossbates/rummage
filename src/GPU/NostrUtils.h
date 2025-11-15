@@ -31,10 +31,10 @@
 #include <string>
 
 // Bech32 charset
-const char BECH32_CHARSET[] = "qpzry9x8gf2tvdw0s3jn54khce6mua7l";
+static const char BECH32_CHARSET[] = "qpzry9x8gf2tvdw0s3jn54khce6mua7l";
 
 // Bech32 encoding polymod
-uint32_t bech32_polymod_step(uint32_t pre) {
+static inline uint32_t bech32_polymod_step(uint32_t pre) {
     uint8_t b = pre >> 25;
     return ((pre & 0x1FFFFFF) << 5) ^
         (-((b >> 0) & 1) & 0x3b6a57b2UL) ^
@@ -45,7 +45,7 @@ uint32_t bech32_polymod_step(uint32_t pre) {
 }
 
 // Convert 8-bit data to 5-bit groups
-void convert_bits(const uint8_t *in, size_t inlen, uint8_t *out, size_t *outlen, int frombits, int tobits, bool pad) {
+static inline void convert_bits(const uint8_t *in, size_t inlen, uint8_t *out, size_t *outlen, int frombits, int tobits, bool pad) {
     uint32_t acc = 0;
     int bits = 0;
     size_t idx = 0;
@@ -71,7 +71,7 @@ void convert_bits(const uint8_t *in, size_t inlen, uint8_t *out, size_t *outlen,
 }
 
 // Encode data to bech32 format
-std::string bech32_encode(const char *hrp, const uint8_t *data, size_t data_len) {
+static inline std::string bech32_encode(const char *hrp, const uint8_t *data, size_t data_len) {
     uint8_t data5bit[64];
     size_t data5bit_len;
 
@@ -111,17 +111,17 @@ std::string bech32_encode(const char *hrp, const uint8_t *data, size_t data_len)
 }
 
 // Convert hex public key to npub
-std::string pubkey_to_npub(const uint8_t *pubkey) {
+static inline std::string pubkey_to_npub(const uint8_t *pubkey) {
     return bech32_encode("npub", pubkey, 32);
 }
 
 // Convert hex private key to nsec
-std::string privkey_to_nsec(const uint8_t *privkey) {
+static inline std::string privkey_to_nsec(const uint8_t *privkey) {
     return bech32_encode("nsec", privkey, 32);
 }
 
 // Print key pair in various formats
-void print_nostr_keypair(const uint8_t *privkey, const uint8_t *pubkey) {
+static inline void print_nostr_keypair(const uint8_t *privkey, const uint8_t *pubkey) {
     printf("\n========== NOSTR KEY PAIR ==========\n");
 
     printf("Private Key (hex):  ");

@@ -69,17 +69,21 @@ $(OBJDIR)/GPU/cuda/CudaGPUMiner.o: $(SRCDIR)/GPU/cuda/CudaGPUMiner.cu
 	$(NVCC) -allow-unsupported-compiler --compile --compiler-options -fPIC -ccbin $(CXXCUDA) -m64 -O2 -I$(SRCDIR) -I$(CUDA)/include -gencode=arch=compute_$(CCAP),code=sm_$(CCAP) -o $@ -c $<
 endif
 
-# Metal compilation rule (placeholder for Phase 2)
+# Metal compilation rule
 ifeq ($(GPU_BACKEND),metal)
-$(OBJDIR)/GPU/metal/MetalGPUMiner.o: $(SRCDIR)/GPU/metal/MetalGPUMiner.mm
+# Compile Metal shaders
+$(METAL_LIB): $(METAL_SHADER)
+	@echo "Compiling Metal shaders..."
+	@mkdir -p $(dir $(METAL_LIB))
+	xcrun -sdk macosx metal -c $(METAL_SHADER) -o MetalKernels.air
+	xcrun -sdk macosx metallib MetalKernels.air -o $(METAL_LIB)
+	@rm -f MetalKernels.air
+	@echo "Metal shaders compiled successfully"
+
+# Compile Objective-C++ implementation (depends on Metal library)
+$(OBJDIR)/GPU/metal/MetalGPUMiner.o: $(SRCDIR)/GPU/metal/MetalGPUMiner.mm $(METAL_LIB)
 	@mkdir -p $(OBJDIR)/GPU/metal
 	$(CXX) $(CXXFLAGS) -o $@ -c $<
-
-# Metal shader compilation (to be implemented in Phase 2)
-$(METAL_LIB): $(METAL_SHADER)
-	@echo "Metal shader compilation not yet implemented (Phase 2)"
-	# xcrun -sdk macosx metal -c $(METAL_SHADER) -o MetalKernels.air
-	# xcrun -sdk macosx metallib MetalKernels.air -o $(METAL_LIB)
 endif
 
 # Common C++ compilation rules
