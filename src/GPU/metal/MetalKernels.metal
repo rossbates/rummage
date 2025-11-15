@@ -25,16 +25,21 @@
 #include <metal_stdlib>
 using namespace metal;
 
-// Placeholder kernels for Phase 2
-// Full implementation will be added in Phase 3-4
+// Include our math libraries
+#include "MetalMath.h"
+#include "MetalMath_ModArith.h"
+#include "MetalMath_EC.h"
+#include "MetalMath_GTable.h"
+
+// =========================================================================
+// Random Mode Kernel (Phase 4 - to be fully implemented)
+// =========================================================================
 
 /**
  * Random mode vanity key search kernel
  *
- * This kernel will be fully implemented in Phase 4 with:
- * - Random private key generation
- * - secp256k1 point multiplication
- * - Pattern matching
+ * Phase 3: Math library in place, basic structure ready
+ * Phase 4: Will add random number generation and pattern matching
  */
 kernel void nostrVanityKernel_random(
     device const uint8_t* gTableX [[buffer(0)]],
@@ -48,18 +53,35 @@ kernel void nostrVanityKernel_random(
     uint gid [[thread_position_in_grid]]
 )
 {
-    // Placeholder - will implement in Phase 4
+    // Phase 3: Test that math library compiles
+    // Phase 4: Will implement full random key generation
+
     // For now, just mark as not found
     results[gid] = 0;
+
+    // Test: Generate a simple public key from a known private key
+    // This validates that our math library works
+    if (gid == 0) {
+        uint64_t test_privkey[5];
+        SetInt32(test_privkey, 1); // Private key = 1
+
+        uint64_t test_pubkey[5];
+        PrivKeyToPubKey(test_pubkey, test_privkey, gTableX, gTableY);
+
+        // Store test result (first 32 bytes of pubKeys buffer)
+        Store256(pubKeys, test_pubkey);
+    }
 }
+
+// =========================================================================
+// Sequential Mode Kernel (Phase 4 - to be fully implemented)
+// =========================================================================
 
 /**
  * Sequential mode vanity key search kernel
  *
- * This kernel will be fully implemented in Phase 4 with:
- * - Sequential key iteration from start offset
- * - secp256k1 point multiplication
- * - Pattern matching
+ * Phase 3: Math library in place, basic structure ready
+ * Phase 4: Will add sequential iteration and pattern matching
  */
 kernel void nostrVanityKernel_sequential(
     device const uint8_t* gTableX [[buffer(0)]],
@@ -75,7 +97,25 @@ kernel void nostrVanityKernel_sequential(
     uint gid [[thread_position_in_grid]]
 )
 {
-    // Placeholder - will implement in Phase 4
+    // Phase 3: Test that math library compiles
+    // Phase 4: Will implement full sequential search
+
     // For now, just mark as not found
     results[gid] = 0;
+
+    // Test: Load start offset and compute next key
+    if (gid == 0) {
+        uint64_t privkey[5];
+        Load256(privkey, startOffset);
+
+        // Increment by 1
+        Increment256(privkey);
+
+        // Compute public key
+        uint64_t pubkey[5];
+        PrivKeyToPubKey(pubkey, privkey, gTableX, gTableY);
+
+        // Store test result
+        Store256(pubKeys, pubkey);
+    }
 }
