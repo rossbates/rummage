@@ -22,3 +22,6 @@ obj/
 
 # Scripts
 scripts/
+
+# macOS
+.DS_Store
