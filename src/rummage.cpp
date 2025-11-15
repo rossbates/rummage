@@ -28,7 +28,7 @@
 #include <cassert>
 #include <chrono>
 #include <signal.h>
-#include "GPU/GPURummage.h"
+#include "GPU/GPUMinerFactory.h"
 #include "GPU/NostrUtils.h"
 #include "CPU/SECP256k1.h"
 
@@ -433,8 +433,8 @@ int main(int argc, char **argv) {
         bech32PatternLen = strlen(originalBech32Pattern);
     }
 
-    // Initialize GPU miner
-    GPURummage *miner = new GPURummage(
+    // Initialize GPU miner using factory pattern
+    IGPUMiner *miner = createGPUMiner(
         gTableXCPU,
         gTableYCPU,
         lowerPattern,

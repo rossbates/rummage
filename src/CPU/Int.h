@@ -215,7 +215,45 @@ private:
 
 #ifndef WIN64
 
+// Platform detection for ARM64 vs x86-64
+#if defined(__aarch64__) || defined(__arm64__) || defined(_M_ARM64)
+  #define IS_ARM64 1
+#else
+  #define IS_ARM64 0
+#endif
+
 // Missing intrinsics
+#if IS_ARM64
+// ARM64 implementations using compiler intrinsics
+
+static uint64_t inline _umul128(uint64_t a, uint64_t b, uint64_t *h) {
+  __uint128_t result = (__uint128_t)a * b;
+  *h = result >> 64;
+  return (uint64_t)result;
+}
+
+static int64_t inline _mul128(int64_t a, int64_t b, int64_t *h) {
+  __int128_t result = (__int128_t)a * b;
+  *h = result >> 64;
+  return (int64_t)result;
+}
+
+static uint64_t inline _udiv128(uint64_t hi, uint64_t lo, uint64_t d,uint64_t *r) {
+  __uint128_t dividend = ((__uint128_t)hi << 64) | lo;
+  *r = dividend % d;
+  return dividend / d;
+}
+
+static uint64_t inline __rdtsc() {
+  // ARM64 doesn't have rdtsc, use system timer
+  uint64_t val;
+  __asm__ volatile("mrs %0, cntvct_el0" : "=r" (val));
+  return val;
+}
+
+#else
+// x86-64 implementations using inline assembly
+
 static uint64_t inline _umul128(uint64_t a, uint64_t b, uint64_t *h) {
   uint64_t rhi;
   uint64_t rlo;
@@ -229,7 +267,7 @@ static int64_t inline _mul128(int64_t a, int64_t b, int64_t *h) {
   uint64_t rlo;
   __asm__( "imulq  %[b];" :"=d"(rhi),"=a"(rlo) :"1"(a),[b]"rm"(b));
   *h = rhi;
-  return rlo;  
+  return rlo;
 }
 
 static uint64_t inline _udiv128(uint64_t hi, uint64_t lo, uint64_t d,uint64_t *r) {
@@ -237,7 +275,7 @@ static uint64_t inline _udiv128(uint64_t hi, uint64_t lo, uint64_t d,uint64_t *r
   uint64_t _r;
   __asm__( "divq  %[d];" :"=d"(_r),"=a"(q) :"d"(hi),"a"(lo),[d]"rm"(d));
   *r = _r;
-  return q;  
+  return q;
 }
 
 static uint64_t inline __rdtsc() {
@@ -247,12 +285,34 @@ static uint64_t inline __rdtsc() {
   return (uint64_t)h << 32 | (uint64_t)l;
 }
 
+#endif
+
 #define __shiftright128(a,b,n) ((a)>>(n))|((b)<<(64-(n)))
 #define __shiftleft128(a,b,n) ((b)<<(n))|((a)>>(64-(n)))
 
+// Portable implementations for add/sub with carry
+#if IS_ARM64
+// ARM64: Use portable C implementations
+static inline unsigned char _addcarry_u64_portable(unsigned char c_in, uint64_t a, uint64_t b, uint64_t *out) {
+  __uint128_t sum = (__uint128_t)a + b + c_in;
+  *out = (uint64_t)sum;
+  return (sum >> 64) & 1;
+}
 
+static inline unsigned char _subborrow_u64_portable(unsigned char c_in, uint64_t a, uint64_t b, uint64_t *out) {
+  __uint128_t diff = (__uint128_t)a - b - c_in;
+  *out = (uint64_t)diff;
+  return (diff >> 64) & 1;
+}
+
+#define _addcarry_u64(a,b,c,d) _addcarry_u64_portable(a,b,c,d)
+#define _subborrow_u64(a,b,c,d) _subborrow_u64_portable(a,b,c,d)
+#else
+// x86-64: Use GCC/Clang builtins
 #define _subborrow_u64(a,b,c,d) __builtin_ia32_sbb_u64(a,b,c,(long long unsigned int*)d);
 #define _addcarry_u64(a,b,c,d) __builtin_ia32_addcarryx_u64(a,b,c,(long long unsigned int*)d);
+#endif
+
 #define _byteswap_uint64 __builtin_bswap64
 #define LZC(x) __builtin_clzll(x)
 #define TZC(x) __builtin_ctzll(x)

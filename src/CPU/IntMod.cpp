@@ -16,7 +16,37 @@
 */
 
 #include "Int.h"
+#if defined(__x86_64__) || defined(_M_X64) || defined(__i386__) || defined(_M_IX86)
 #include <emmintrin.h>
+#else
+// Portable 128-bit type and intrinsics for non-x86 platforms
+typedef union {
+  uint64_t u64[2];
+  int64_t i64[2];
+} __m128i;
+
+// Portable SSE intrinsic implementations
+static inline __m128i _mm_add_epi64(__m128i a, __m128i b) {
+  __m128i result;
+  result.u64[0] = a.u64[0] + b.u64[0];
+  result.u64[1] = a.u64[1] + b.u64[1];
+  return result;
+}
+
+static inline __m128i _mm_sub_epi64(__m128i a, __m128i b) {
+  __m128i result;
+  result.u64[0] = a.u64[0] - b.u64[0];
+  result.u64[1] = a.u64[1] - b.u64[1];
+  return result;
+}
+
+static inline __m128i _mm_slli_epi64(__m128i a, int count) {
+  __m128i result;
+  result.u64[0] = a.u64[0] << count;
+  result.u64[1] = a.u64[1] << count;
+  return result;
+}
+#endif
 #include <string.h>
 
 #define MAX(x,y) (((x)>(y))?(x):(y))
