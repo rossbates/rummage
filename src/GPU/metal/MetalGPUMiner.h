@@ -35,6 +35,8 @@
 @class MTLLibrary;
 @class MTLComputePipelineState;
 @class MTLBuffer;
+@protocol MTLCommandBuffer;
+@protocol MTLComputeCommandEncoder;
 #else
 typedef void MTLDevice;
 typedef void MTLCommandQueue;
@@ -45,8 +47,9 @@ typedef void MTLBuffer;
 
 // Metal-specific parameters
 #define METAL_THREADGROUP_SIZE 256      // Threads per threadgroup (similar to CUDA block)
-#define METAL_THREADGROUPS_PER_GRID 512 // Number of threadgroups (similar to CUDA grid)
-#define METAL_KEYS_PER_THREAD 64        // Keys generated per thread per iteration
+#define METAL_THREADS_PER_THREADGROUP 256  // Alias for consistency
+#define METAL_THREADGROUPS_PER_GRID 2048 // Increased for more parallelism (was 512)
+#define METAL_KEYS_PER_THREAD 8         // Reduced - less work per thread (was 64)
 
 #define METAL_TOTAL_THREADS (METAL_THREADGROUP_SIZE * METAL_THREADGROUPS_PER_GRID)
 

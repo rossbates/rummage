@@ -28,6 +28,56 @@
 #include "../NostrUtils.h"
 #include <stdio.h>
 #include <string.h>
+
+// CPU-side bech32 encoder (for display purposes)
+static void encode_npub_cpu(uint8_t *pubkey_32bytes, char *npub_out) {
+    const char *bech32_charset = "qpzry9x8gf2tvdw0s3jn54khce6mua7l";
+
+    // Convert pubkey to 5-bit groups
+    uint8_t data5[52];
+    int data5_len = 0;
+    uint32_t acc = 0;
+    int bits = 0;
+
+    for (int i = 0; i < 32; i++) {
+        acc = ((acc << 8) | pubkey_32bytes[i]) & 0x1fff;
+        bits += 8;
+        while (bits >= 5) {
+            bits -= 5;
+            data5[data5_len++] = (acc >> bits) & 31;
+        }
+    }
+    if (bits > 0) {
+        data5[data5_len++] = (acc << (5 - bits)) & 31;
+    }
+
+    // Create values array for checksum
+    uint8_t values[63];
+    values[0] = 3; values[1] = 3; values[2] = 3; values[3] = 3; values[4] = 16;
+    for (int i = 0; i < data5_len; i++) values[5 + i] = data5[i];
+    for (int i = 0; i < 6; i++) values[5 + data5_len + i] = 0;
+
+    // Calculate checksum
+    uint32_t chk = 1;
+    uint32_t GEN[5] = {0x3b6a57b2, 0x26508e6d, 0x1ea119fa, 0x3d4233dd, 0x2a1462b3};
+    for (int i = 0; i < 5 + data5_len + 6; i++) {
+        uint8_t top = chk >> 25;
+        chk = (chk & 0x1ffffff) << 5 ^ values[i];
+        for (int j = 0; j < 5; j++) {
+            if ((top >> j) & 1) chk ^= GEN[j];
+        }
+    }
+    chk ^= 1;
+
+    // Extract checksum
+    uint8_t checksum[6];
+    for (int i = 0; i < 6; i++) checksum[i] = (chk >> (5 * (5 - i))) & 31;
+
+    // Encode to bech32 charset
+    for (int i = 0; i < data5_len; i++) npub_out[i] = bech32_charset[data5[i]];
+    for (int i = 0; i < 6; i++) npub_out[data5_len + i] = bech32_charset[checksum[i]];
+    npub_out[data5_len + 6] = '\0';
+}
 #include <stdlib.h>
 #include <sys/stat.h>
 
@@ -329,18 +379,186 @@ bool MetalGPUMiner::allocateBuffers(const uint8_t *gTableXCPU, const uint8_t *gT
 }
 
 void MetalGPUMiner::doIteration(uint64_t iteration) {
-    // Placeholder for Phase 5 - kernel dispatch
-    // Will implement actual GPU kernel execution
-    currentIteration = iteration;
+    @autoreleasepool {
+        // Clear results buffers (both CPU and GPU)
+        memset(outputFoundCPU, 0, METAL_TOTAL_THREADS);
+        memset([(id<MTLBuffer>)resultsBuffer contents], 0, METAL_TOTAL_THREADS);
+        memset([(id<MTLBuffer>)privKeysBuffer contents], 0, METAL_TOTAL_THREADS * 32);
+        memset([(id<MTLBuffer>)pubKeysBuffer contents], 0, METAL_TOTAL_THREADS * 32);
 
-    // For now, just increment keys generated count
-    keysGenerated += METAL_TOTAL_THREADS * METAL_KEYS_PER_THREAD;
+        id<MTLCommandBuffer> commandBuffer = [(MTLCommandQueue *)commandQueue commandBuffer];
+        id<MTLComputeCommandEncoder> encoder = [commandBuffer computeCommandEncoder];
+
+        // Select appropriate pipeline
+        id<MTLComputePipelineState> pipeline = (searchMode == SEARCH_RANDOM) ?
+            (id<MTLComputePipelineState>)randomPipeline :
+            (id<MTLComputePipelineState>)sequentialPipeline;
+
+        [encoder setComputePipelineState:pipeline];
+
+        // Set buffers (common to both modes)
+        [encoder setBuffer:(id<MTLBuffer>)gTableXBuffer offset:0 atIndex:0];
+        [encoder setBuffer:(id<MTLBuffer>)gTableYBuffer offset:0 atIndex:1];
+        [encoder setBuffer:(id<MTLBuffer>)vanityPatternBuffer offset:0 atIndex:2];
+
+        if (searchMode == SEARCH_SEQUENTIAL) {
+            // Sequential mode - additional buffers
+            [encoder setBuffer:(id<MTLBuffer>)startOffsetBuffer offset:0 atIndex:3];
+            [encoder setBuffer:(id<MTLBuffer>)resultsBuffer offset:0 atIndex:4];
+            [encoder setBuffer:(id<MTLBuffer>)privKeysBuffer offset:0 atIndex:5];
+            [encoder setBuffer:(id<MTLBuffer>)pubKeysBuffer offset:0 atIndex:6];
+
+            // Set constants (iteration, vanityLen, vanityMode)
+            [encoder setBytes:&iteration length:sizeof(uint64_t) atIndex:7];
+            [encoder setBytes:&vanityLen length:sizeof(uint32_t) atIndex:8];
+            uint32_t mode = (uint32_t)vanityMode;
+            [encoder setBytes:&mode length:sizeof(uint32_t) atIndex:9];
+        } else {
+            // Random mode
+            [encoder setBuffer:(id<MTLBuffer>)resultsBuffer offset:0 atIndex:3];
+            [encoder setBuffer:(id<MTLBuffer>)privKeysBuffer offset:0 atIndex:4];
+            [encoder setBuffer:(id<MTLBuffer>)pubKeysBuffer offset:0 atIndex:5];
+
+            // Set constants (vanityLen, vanityMode)
+            [encoder setBytes:&vanityLen length:sizeof(uint32_t) atIndex:6];
+            uint32_t mode = (uint32_t)vanityMode;
+            [encoder setBytes:&mode length:sizeof(uint32_t) atIndex:7];
+        }
+
+        // Dispatch threads
+        MTLSize gridSize = MTLSizeMake(METAL_TOTAL_THREADS, 1, 1);
+        MTLSize threadgroupSize = MTLSizeMake(METAL_THREADS_PER_THREADGROUP, 1, 1);
+        [encoder dispatchThreads:gridSize threadsPerThreadgroup:threadgroupSize];
+
+        [encoder endEncoding];
+        [commandBuffer commit];
+        [commandBuffer waitUntilCompleted];
+
+        // Check for errors
+        if ([commandBuffer error]) {
+            NSError *error = [commandBuffer error];
+            printf("\n[ERROR] Metal command buffer failed: %s\n", [[error localizedDescription] UTF8String]);
+        }
+
+        // Copy results back to CPU
+        memcpy(outputFoundCPU, [(id<MTLBuffer>)resultsBuffer contents], METAL_TOTAL_THREADS);
+        memcpy(outputPrivKeysCPU, [(id<MTLBuffer>)privKeysBuffer contents], METAL_TOTAL_THREADS * 32);
+        memcpy(outputPubKeysCPU, [(id<MTLBuffer>)pubKeysBuffer contents], METAL_TOTAL_THREADS * 32);
+
+        // Debug: Print first public key on first iteration
+        if (currentIteration == 0) {
+            printf("\n[DEBUG] Iteration %llu, First public key (thread 0): ", (unsigned long long)iteration);
+            for (int i = 0; i < 8; i++) {  // Just first 8 bytes
+                printf("%02x", outputPubKeysCPU[i]);
+            }
+            printf("...\n");
+            printf("[DEBUG] Results[0]: %d, PrivKey[0]: %02x%02x%02x%02x\n",
+                   outputFoundCPU[0], outputPrivKeysCPU[0], outputPrivKeysCPU[1],
+                   outputPrivKeysCPU[2], outputPrivKeysCPU[3]);
+        }
+
+        // Update stats
+        keysGenerated += METAL_TOTAL_THREADS * METAL_KEYS_PER_THREAD;
+        currentIteration = iteration;
+    }
 }
 
 bool MetalGPUMiner::checkAndPrintResults() {
-    // Placeholder for Phase 5 - results checking
-    // Will implement actual result verification and printing
-    return false;
+    bool foundAny = false;
+
+    for (int idxThread = 0; idxThread < METAL_TOTAL_THREADS; idxThread++) {
+        if (outputFoundCPU[idxThread] > 0) {
+            // Get private and public keys
+            uint8_t *privKey = &outputPrivKeysCPU[idxThread * 32];
+            uint8_t *pubKey = &outputPubKeysCPU[idxThread * 32];
+
+            // If we converted from bech32 to hex, verify the full bech32 pattern
+            if (needsBech32Verification) {
+                char npub[64];
+                encode_npub_cpu(pubKey, npub);
+
+                // Check if full bech32 pattern matches
+                bool bech32Match = false;
+                size_t patternLen = strlen(originalBech32Pattern);
+
+                if (originalBech32Mode == VANITY_BECH32_PREFIX) {
+                    bech32Match = (strncmp(npub, originalBech32Pattern, patternLen) == 0);
+                } else if (originalBech32Mode == VANITY_BECH32_SUFFIX) {
+                    size_t npubLen = strlen(npub) - 6;
+                    if (npubLen >= patternLen) {
+                        bech32Match = (strncmp(npub + npubLen - patternLen, originalBech32Pattern, patternLen) == 0);
+                    }
+                } else if (originalBech32Mode == VANITY_BECH32_BOTH) {
+                    size_t halfLen = patternLen / 2;
+                    bool prefixMatch = (strncmp(npub, originalBech32Pattern, halfLen) == 0);
+                    size_t npubLen = strlen(npub) - 6;
+                    size_t suffixLen = patternLen - halfLen;
+                    bool suffixMatch = (npubLen >= suffixLen) &&
+                                       (strncmp(npub + npubLen - suffixLen, originalBech32Pattern + halfLen, suffixLen) == 0);
+                    bech32Match = prefixMatch && suffixMatch;
+                }
+
+                if (!bech32Match) {
+                    continue;  // Skip false positive
+                }
+            }
+
+            foundAny = true;
+            matchesFound++;
+
+            printf("\n========== MATCH FOUND ==========\n");
+            printf("Private Key (hex): ");
+            for (int i = 0; i < 32; i++) {
+                printf("%02x", privKey[i]);
+            }
+            printf("\n");
+
+            printf("Public Key (hex):  ");
+            for (int i = 0; i < 32; i++) {
+                printf("%02x", pubKey[i]);
+            }
+            printf("\n");
+
+            // If we verified bech32 or in bech32 mode, also display the npub
+            if (needsBech32Verification || vanityMode >= VANITY_BECH32_PREFIX) {
+                char npub[64];
+                encode_npub_cpu(pubKey, npub);
+                printf("Public Key (npub): npub1%s\n", npub);
+            }
+
+            printf("Total keys searched: %llu\n", (unsigned long long)keysGenerated);
+            printf("=================================\n\n");
+
+            // Write to file
+            FILE *file = fopen("keys.txt", "a");
+            if (file != NULL) {
+                fprintf(file, "\n========== MATCH FOUND ==========\n");
+                fprintf(file, "Private Key (hex): ");
+                for (int i = 0; i < 32; i++) {
+                    fprintf(file, "%02x", privKey[i]);
+                }
+                fprintf(file, "\n");
+
+                fprintf(file, "Public Key (hex):  ");
+                for (int i = 0; i < 32; i++) {
+                    fprintf(file, "%02x", pubKey[i]);
+                }
+                fprintf(file, "\n");
+
+                if (needsBech32Verification || vanityMode >= VANITY_BECH32_PREFIX) {
+                    char npub[64];
+                    encode_npub_cpu(pubKey, npub);
+                    fprintf(file, "Public Key (npub): npub1%s\n", npub);
+                }
+
+                fprintf(file, "Total keys searched: %llu\n", (unsigned long long)keysGenerated);
+                fprintf(file, "=================================\n\n");
+                fclose(file);
+            }
+        }
+    }
+
+    return foundAny;
 }
 
 void MetalGPUMiner::doFreeMemory() {

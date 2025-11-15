@@ -88,7 +88,7 @@ inline bool IsNegative256(thread const uint64_t *x) {
     return ((int64_t)x[4]) < 0LL;
 }
 
-// Load from memory
+// Load from memory (device address space)
 inline void Load256(thread uint64_t *dst, device const uint8_t *src) {
     // Load little-endian bytes into uint64_t array
     for (int i = 0; i < 4; i++) {
@@ -100,8 +100,30 @@ inline void Load256(thread uint64_t *dst, device const uint8_t *src) {
     dst[4] = 0;
 }
 
-// Store to memory
+// Load from memory (thread address space)
+inline void Load256(thread uint64_t *dst, thread const uint8_t *src) {
+    // Load little-endian bytes into uint64_t array
+    for (int i = 0; i < 4; i++) {
+        dst[i] = 0;
+        for (int j = 0; j < 8; j++) {
+            dst[i] |= ((uint64_t)src[i * 8 + j]) << (j * 8);
+        }
+    }
+    dst[4] = 0;
+}
+
+// Store to memory (device address space)
 inline void Store256(device uint8_t *dst, thread const uint64_t *src) {
+    // Store uint64_t array as little-endian bytes
+    for (int i = 0; i < 4; i++) {
+        for (int j = 0; j < 8; j++) {
+            dst[i * 8 + j] = (uint8_t)(src[i] >> (j * 8));
+        }
+    }
+}
+
+// Store to memory (thread address space)
+inline void Store256(thread uint8_t *dst, thread const uint64_t *src) {
     // Store uint64_t array as little-endian bytes
     for (int i = 0; i < 4; i++) {
         for (int j = 0; j < 8; j++) {

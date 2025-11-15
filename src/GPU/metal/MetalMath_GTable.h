@@ -44,20 +44,24 @@ inline void GTable_LoadPoint(
 }
 
 // =========================================================================
-// Fast Scalar Multiplication using GTable
+// Fast Scalar Multiplication using GTable with Jacobian coordinates
 // Multiply generator G by scalar k: R = k * G
+// Uses Jacobian coordinates to avoid modular inverse until the very end!
 // =========================================================================
 
-inline void GTable_MultG(
-    thread ECPoint *r,
+inline void GTable_MultG_Jacobian(
+    thread ECPointJacobian *r,
     thread const uint64_t *k,
     device const uint8_t *gTableX,
     device const uint8_t *gTableY
 ) {
-    ECPoint result, temp;
-    EC_SetZero(&result);
+    ECPointJacobian result;
+    ECPoint temp_affine;
+    ECJ_SetZero(&result);
 
     // Process k in 16-bit chunks (matching GTable organization)
+    // GTable stores: index i in chunk j = (65536^j * (i+1)) * G
+    // So we need to use (chunk_value - 1) as the array index
     for (int chunk = 0; chunk < NUM_GTABLE_CHUNK; chunk++) {
         // Extract 16-bit value from k for this chunk
         int bit_offset = chunk * 16;
@@ -75,28 +79,39 @@ inline void GTable_MultG(
             chunk_value = lo | hi;
         }
 
-        // Skip if chunk value is zero
+        // Skip if chunk value is zero (means don't add this chunk)
         if (chunk_value == 0) continue;
 
-        // Calculate GTable index: chunk_base + chunk_value
-        uint32_t gtable_index = (chunk * NUM_GTABLE_VALUE) + chunk_value;
+        // Calculate GTable index: chunk_base + (chunk_value - 1)
+        // Subtract 1 because GTable[0] in chunk j represents 1*(65536^j)*G, not 0
+        uint32_t gtable_index = (chunk * NUM_GTABLE_VALUE) + (chunk_value - 1);
 
-        // Load point from GTable
-        GTable_LoadPoint(&temp, gTableX, gTableY, gtable_index);
+        // Load point from GTable (in affine coordinates)
+        GTable_LoadPoint(&temp_affine, gTableX, gTableY, gtable_index);
 
-        // Add to result
-        ECPoint sum;
-        EC_Add(&sum, &result, &temp);
-        EC_Set(&result, &sum);
+        // Add to result using mixed Jacobian-affine addition (no division!)
+        ECPointJacobian sum;
+        ECJ_AddMixed(&sum, &result, &temp_affine);
+
+        // Copy result
+        result.X[0] = sum.X[0]; result.X[1] = sum.X[1]; result.X[2] = sum.X[2]; result.X[3] = sum.X[3]; result.X[4] = sum.X[4];
+        result.Y[0] = sum.Y[0]; result.Y[1] = sum.Y[1]; result.Y[2] = sum.Y[2]; result.Y[3] = sum.Y[3]; result.Y[4] = sum.Y[4];
+        result.Z[0] = sum.Z[0]; result.Z[1] = sum.Z[1]; result.Z[2] = sum.Z[2]; result.Z[3] = sum.Z[3]; result.Z[4] = sum.Z[4];
+        result.isZero = sum.isZero;
     }
 
-    EC_Set(r, &result);
+    // Copy final result
+    r->X[0] = result.X[0]; r->X[1] = result.X[1]; r->X[2] = result.X[2]; r->X[3] = result.X[3]; r->X[4] = result.X[4];
+    r->Y[0] = result.Y[0]; r->Y[1] = result.Y[1]; r->Y[2] = result.Y[2]; r->Y[3] = result.Y[3]; r->Y[4] = result.Y[4];
+    r->Z[0] = result.Z[0]; r->Z[1] = result.Z[1]; r->Z[2] = result.Z[2]; r->Z[3] = result.Z[3]; r->Z[4] = result.Z[4];
+    r->isZero = result.isZero;
 }
 
 // =========================================================================
 // Convert private key (256-bit) to public key (secp256k1 point)
 // Public key = private_key * G
 // Returns x-coordinate only (Schnorr/Nostr format)
+// Uses Jacobian coordinates - only one modular inverse at the end!
 // =========================================================================
 
 inline void PrivKeyToPubKey(
@@ -105,13 +120,16 @@ inline void PrivKeyToPubKey(
     device const uint8_t *gTableX,
     device const uint8_t *gTableY
 ) {
-    ECPoint pubkey;
+    // Multiply generator G by private key (in Jacobian coordinates)
+    ECPointJacobian pubkey_jac;
+    GTable_MultG_Jacobian(&pubkey_jac, privkey, gTableX, gTableY);
 
-    // Multiply generator G by private key
-    GTable_MultG(&pubkey, privkey, gTableX, gTableY);
+    // Convert to affine coordinates (requires ONE modular inverse)
+    ECPoint pubkey_affine;
+    ECJ_ToAffine(&pubkey_affine, &pubkey_jac);
 
     // Extract x-coordinate
-    Set256(pubkey_x, pubkey.x);
+    Set256(pubkey_x, pubkey_affine.x);
 }
 
 // =========================================================================

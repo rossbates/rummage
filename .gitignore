@@ -16,5 +16,9 @@ obj/
 *.fatbin
 *.ptx
 
+# Metal build files
+*.metallib
+*.air
+
 # Scripts
 scripts/
