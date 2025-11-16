@@ -80,9 +80,9 @@ Computed via square-and-multiply with 260 iterations. While this is more iterati
 - **~9 million keys/second**
 
 **Comparison to CUDA (RTX 3070):**
-- CUDA: ~4 billion keys/second
+- CUDA: ~42 million keys/second
 - Metal: ~9 million keys/second
-- **Performance ratio: ~444× slower**
+- **Performance ratio: ~4× slower**
 
 ### Performance Analysis
 
