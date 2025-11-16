@@ -1,10 +1,11 @@
+<div align="center">
+<img src="/assets/iconx128.png" alt="Rummage Logo" title="Rummage logo" width="64"/>
+  
 # Rummage
+</div>
 
-GPU-accelerated npub miner using CUDA.
+Rummage is a high-performance Nostr vanity miner that exhaustively searches the secp256k1 keyspace to generate custom prefixes or suffixes in either Bech32 npub format or raw hex. It’s built for NVIDIA GPUs using CUDA and can sustain tens of millions of key attempts per second on a single consumer card.
 
-## Overview
-
-Rummage searches for Nostr keys with custom prefixes or suffixes in the npub or hex address. It uses your GPU to generate and test millions of keys per second.
 
 ## Requirements
 
@@ -38,6 +39,8 @@ Sequential exhaustive search (resumable):
 ./rummage --npub-prefix satoshi --sequential
 ```
 
+To learn more about how search modes work in Rummage, see [docs/SEARCH.md](docs/SEARCH.md).
+
 ## Options
 
 **Bech32 Mode** (searches npub address):
@@ -56,12 +59,9 @@ Sequential exhaustive search (resumable):
 
 By default, random search mode is used (faster for short patterns).
 
-To learn more about how search modes work in Rummage, see [docs/SEARCH.md](docs/SEARCH.md).
 
 ## Output
 
 Found keys are saved to `keys.txt` with private key, public key, and npub address.
 
-## License
 
-MIT License - Copyright (c) 2025 rossbates

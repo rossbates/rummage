@@ -11,12 +11,11 @@ Generates random private keys and checks if they match your pattern.
 **Advantages:**
 - Faster for short patterns (no checkpoint overhead)
 - Simple and straightforward
-- Slightly higher throughput (~5-10% faster than sequential)
 
 **Disadvantages:**
 - No resume capability - crash means starting over
 - No progress tracking - unknown completion time
-- Probabilistic - never guaranteed to find a match
+- Probabilistic - not guaranteed to find a match
 - Duplicate work - wastes ~37% of effort after exhausting search space once
 
 **Use when:**
@@ -64,22 +63,6 @@ For a 9-character bech32 prefix like "satoshi00":
 - At 40M keys/sec: ~10.2 days
 - Resumable at any point
 - Note: Finding a match assumes uniform distribution of valid keys
-
-## Performance Comparison
-
-**Speed difference:**
-- Random: ~42M keys/sec (uses cuRAND)
-- Sequential: ~48M keys/sec (no RNG overhead, ~14% faster)
-
-**For short patterns (4 chars, 2^20 = 1M keys):**
-- Random: ~0.02 seconds
-- Sequential: ~0.02 seconds + checkpoint overhead
-- Winner: Random (negligible difference)
-
-**For long patterns (9 chars, 2^45 = 35T keys):**
-- Random: Unknown (could be 5-45 days, probabilistic)
-- Sequential: ~10 days (exhaustive search)
-- Winner: Sequential (predictability + resume)
 
 ## Checkpoint Security
 
