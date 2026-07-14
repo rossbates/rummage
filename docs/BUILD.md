@@ -9,7 +9,7 @@ For known good configurations and performance results, see [PERFORMANCE.md](PERF
 ### Linux (CUDA)
 
 **Required:**
-- CUDA Toolkit (11.x or 12.x)
+- CUDA Toolkit (11.x, 12.x, or 13.x)
 - GMP library (GNU Multiple Precision)
 - g++ compiler
 
@@ -112,6 +112,7 @@ CCAP = 86
 ```
 
 **Common compute capabilities:**
+- RTX 50-series (Blackwell): `120`
 - RTX 40-series (Ada): `89`
 - RTX 30-series (Ampere): `86`
 - RTX 20-series (Turing): `75`
@@ -120,19 +121,32 @@ CCAP = 86
 
 Find your GPU's compute capability at: https://developer.nvidia.com/cuda-gpus
 
+`CCAP` can also be overridden without editing the Makefile, e.g. `make CCAP=120`.
+
 ## CUDA Installation Path
 
-Update the CUDA path if installed in a non-standard location:
+The Makefile defaults to `CUDA = /usr/local/cuda`, which is normally a symlink to
+whichever version you last installed. If you have multiple CUDA versions installed
+and need a specific one, override it on the command line instead of editing the
+Makefile:
 
-**In Makefile, line 21:**
-```make
-CUDA = /usr/local/cuda-11.8
+```bash
+make CUDA=/usr/local/cuda-11.8
 ```
 
 Check your CUDA version:
 ```bash
 nvcc --version
 ```
+
+**Newer glibc (2.39+) build error:**
+```
+error: exception specification is incompatible with that of previous function "rsqrt"
+```
+This happens because recent glibc versions declare `rsqrt`/`rsqrtf` (C23 extensions)
+with a different exception specification than CUDA's `math_functions.h`. The Makefile
+already compiles `GPURummage.cu` with `-Xcompiler -U_GNU_SOURCE` to avoid pulling in
+those glibc declarations, which resolves the conflict on CUDA 11.8 through 13.x.
 
 ## GPU Performance Tuning
 
