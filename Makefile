@@ -19,8 +19,8 @@ OBJET = $(addprefix $(OBJDIR)/, \
         rummage.o \
 )
 
-CCAP      = 86
-CUDA      = /usr/local/cuda-11.8
+CCAP     ?= 86
+CUDA     ?= /usr/local/cuda
 CXX       = g++
 CXXCUDA   = /usr/bin/g++
 
@@ -42,7 +42,7 @@ NVCC      = $(CUDA)/bin/nvcc
 all: rummage
 
 $(OBJDIR)/GPU/GPURummage.o: $(SRCDIR)/GPU/GPURummage.cu
-	$(NVCC) -allow-unsupported-compiler --compile --compiler-options -fPIC -ccbin $(CXXCUDA) -m64 -O2 -I$(SRCDIR) -I$(CUDA)/include \
+	$(NVCC) -allow-unsupported-compiler --compile --compiler-options -fPIC -Xcompiler -U_GNU_SOURCE -ccbin $(CXXCUDA) -m64 -O2 -I$(SRCDIR) -I$(CUDA)/include \
 	-DNOSTR_BLOCKS_PER_GRID=$(NOSTR_BLOCKS_PER_GRID) \
 	-DNOSTR_THREADS_PER_BLOCK=$(NOSTR_THREADS_PER_BLOCK) \
 	-DKEYS_PER_THREAD_BATCH=$(KEYS_PER_THREAD_BATCH) \
